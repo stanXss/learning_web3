@@ -20,7 +20,7 @@ def proc_main():
     print(current_block)
 
 
-    #TOKEN = Web3.to_checksum_address("<USDC_OR_WHATEVER>")
+    #TOKEN = Web3.to_checksum_address("<USDC_OR_WHATEVER>") 
     #DECIMALS = 6
     #TRANSFER_TOPIC = Web3.keccak(text="Transfer(address,address,uint256)").hex()
 
