@@ -2,8 +2,13 @@ from web3 import Web3
 import json
 import psycopg2
 import requests
+import os
+from dotenv import load_dotenv
 
-RPC_URL = 'https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY'
+load_dotenv()
+RPC_URL = os.environ["RPC_URL"]
+CONN_LINE = os.environ["CONN_LINE"]
+
 ERC20_TRANSFER_ABI = json.loads("""
 [
   {
@@ -27,8 +32,6 @@ w3 = Web3(Web3.HTTPProvider(RPC_URL))
 
 def proc_main():
 
-    print('Hello world!')  # Press Ctrl+F8 to toggle the breakpoint.
-
     current_block = w3.eth.block_number
     print(current_block)
 
@@ -49,7 +52,7 @@ def proc_main():
 
     print(blk_times)
 
-    conn = psycopg2.connect("dbname=your_db user=your_user password=your_pass")
+    conn = psycopg2.connect(CONN_LINE)
     cur = conn.cursor()
     for r in logs_out:
         cur.execute(
