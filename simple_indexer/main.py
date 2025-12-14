@@ -1,9 +1,12 @@
 from web3 import Web3
 import json
 import psycopg2
+from psycopg2.extras import execute_values
 import requests
 import os
 from dotenv import load_dotenv
+from datetime import datetime, timezone
+
 
 load_dotenv()
 RPC_URL = os.environ["RPC_URL"]
@@ -48,36 +51,24 @@ def proc_main():
     logs_out = []
     for log in logs:
         log_out = decode_transfer_log(log, blk_times)
-        logs_out.append(log_out)
+        logs_out.append(make_row(log_out, decimals=6))
 
     print(blk_times)
 
     conn = psycopg2.connect(CONN_LINE)
     cur = conn.cursor()
-    for r in logs_out:
-        cur.execute(
-            """
-            INSERT INTO eth_main.erc20_transfers (
-                blockchain, token_address, tx_hash, log_index,
-                block_number, block_time, from_address, to_address,
-                amount_raw, amount_decimals
-            )
-            VALUES (%s,%s,%s,%s,%s,to_timestamp(%s),%s,%s,%s,%s)
-            ON CONFLICT (block_number, tx_hash, log_index) DO NOTHING;
-            """,
-            (
-                "ethereum",
-                bytes.fromhex(r["token_address"][2:]),
-                bytes.fromhex(r["tx_hash"][2:]),
-                r["log_index"],
-                r["block_number"],
-                r["block_time"],
-                bytes.fromhex(r["from_address"][2:]),
-                bytes.fromhex(r["to_address"][2:]),
-                r["amount_raw"],
-                6,  # USDC decimals
-            )
-        )
+
+    SQL_INSERT = """
+    INSERT INTO eth_main.erc20_transfers (
+      blockchain, token_address, tx_hash, log_index,
+      block_number, block_time, from_address, to_address,
+      amount_raw, amount_decimals
+    ) VALUES %s
+    ON CONFLICT (block_number, tx_hash, log_index) DO NOTHING;
+    """
+
+    bulk_insert_transfers(conn, logs_out, SQL_INSERT)
+
     for key, value in blk_times.items():
         cur.execute(
             """
@@ -93,6 +84,21 @@ def proc_main():
             )
         )
     conn.commit()
+
+
+def bulk_insert_transfers(conn, rows, sql, page_size=5000):
+    """
+    rows: list of tuples in the exact column order above.
+    Use page_size 1k–10k. Start with 5k; tune later.
+    """
+    if not rows:
+        return 0
+
+    with conn.cursor() as cur:
+        execute_values(cur, sql, rows, page_size=page_size)
+    conn.commit()
+    return len(rows)
+
 
 def get_block_timestamps_bulk(block_numbers, batch_size=100):
     result = {}
@@ -121,8 +127,24 @@ def get_block_timestamps_bulk(block_numbers, batch_size=100):
             ts = int(item["result"]["timestamp"], 16)
             out[bn] = ts
 
-        #print(out)
         return out
+
+
+def make_row(decoded, decimals: int) -> tuple:
+    # decoded: dict with from_address, to_address, amount_raw, tx_hash, log_index, block_number, block_time (unix int)
+    return (
+        "ethereum",
+        hex_to_bytes20(decoded["token_address"]),
+        hex_to_bytes32(decoded["tx_hash"]),     # ensure tx_hash includes 0x or not, helper handles both
+        int(decoded["log_index"]),
+        int(decoded["block_number"]),
+        datetime.fromtimestamp(int(decoded["block_time"]), tz=timezone.utc),
+        hex_to_bytes20(decoded["from_address"]),
+        hex_to_bytes20(decoded["to_address"]),
+        int(decoded["amount_raw"]),
+        int(decimals),
+    )
+
 
 def decode_transfer_log(log, blk_times):
 
@@ -141,6 +163,26 @@ def decode_transfer_log(log, blk_times):
         "block_number": decoded["blockNumber"],
         "block_time": blk_times[decoded["blockNumber"]]
     }
+
+
+def hex_to_bytes20(addr: str) -> bytes:
+    # expects '0x' + 40 hex
+    a = addr.lower()
+    if a.startswith("0x"):
+        a = a[2:]
+    if len(a) != 40:
+        raise ValueError(f"Bad address length: {addr}")
+    return bytes.fromhex(a)
+
+
+def hex_to_bytes32(h: str) -> bytes:
+    # expects '0x' + 64 hex, or sometimes without 0x
+    x = h.lower()
+    if x.startswith("0x"):
+        x = x[2:]
+    if len(x) != 64:
+        raise ValueError(f"Bad hash length: {h}")
+    return bytes.fromhex(x)
 
 
 def parse_block_number(x):
