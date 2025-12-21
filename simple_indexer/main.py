@@ -33,6 +33,8 @@ TRANSFER_TOPIC = Web3.keccak(text="Transfer(address,address,uint256)").hex()
 w3 = Web3(Web3.HTTPProvider(RPC_URL))  # web3 RPC service
 conn = psycopg2.connect(CONN_LINE)  # init db connection
 
+token_contract = w3.eth.contract(address=TOKEN, abi=ERC20_TRANSFER_ABI)
+
 
 def proc_main():
 
@@ -41,7 +43,7 @@ def proc_main():
     current_block = w3.eth.block_number
 
     if last_block is None:  # only take several blocks because of rpc limit
-        last_block = current_block - 5
+        last_block = current_block - 1000
     else:
         if current_block - last_block > 5:
             last_block = current_block - 5
@@ -73,22 +75,23 @@ def proc_main():
 
 def load_block_numbers(blk_times): # load block data into db
 
-    cur = conn.cursor()
+    with conn.cursor() as cur:
 
-    for key, value in blk_times.items():
-        cur.execute(
-            """
-            INSERT INTO eth_main.block_cache (
-                block_number, block_time
+        for key, value in blk_times.items():
+            cur.execute(
+                """
+                INSERT INTO eth_main.block_cache (
+                    block_number, block_time
+                )
+                VALUES (%s,to_timestamp(%s))
+                ON CONFLICT (block_number) DO NOTHING;
+                """,
+                (
+                    key,
+                    value,
+                )
             )
-            VALUES (%s,to_timestamp(%s))
-            ON CONFLICT (block_number) DO NOTHING;
-            """,
-            (
-                key,
-                value,
-            )
-        )
+
     conn.commit()
 
 
@@ -106,7 +109,7 @@ def bulk_insert_transfers(rows, page_size=5000):  # load txs into db
       block_number, block_time, from_address, to_address,
       amount_raw, amount_decimals
     ) VALUES %s
-    ON CONFLICT (block_number, tx_hash, log_index) DO NOTHING;
+    ON CONFLICT (tx_hash, log_index) DO NOTHING;
     """
 
     if not rows:
@@ -135,17 +138,15 @@ def get_block_timestamps_bulk(block_numbers, batch_size=100):  # get block times
         r.raise_for_status()
         resp = r.json()
 
-        out = {}
-
         # Alchemy returns a list of responses
         for item in resp:
             if "result" not in item or item["result"] is None:
                 continue
             bn = int(item["result"]["number"], 16)
             ts = int(item["result"]["timestamp"], 16)
-            out[bn] = ts
+            result[bn] = ts
 
-        return out
+    return result
 
 
 def get_max_loaded_block():  # get max block number already loaded into db
@@ -155,10 +156,9 @@ def get_max_loaded_block():  # get max block number already loaded into db
     from eth_main.block_cache bc
     """
 
-    cur = conn.cursor()
-
-    cur.execute(SQL_GET_MAX_BLOCK)
-    last_block = int(cur.fetchone()[0])
+    with conn.cursor() as cur:
+        cur.execute(SQL_GET_MAX_BLOCK)
+        last_block = int(cur.fetchone()[0])
     return last_block
 
 
@@ -179,8 +179,6 @@ def make_row(decoded, decimals: int) -> tuple:  # prepare row for db insert
 
 
 def decode_transfer_log(log, blk_times):  # decode logs with ABI
-
-    token_contract = w3.eth.contract(address=TOKEN, abi=ERC20_TRANSFER_ABI)
 
     decoded = token_contract.events.Transfer().process_log(log)
     args = decoded["args"]

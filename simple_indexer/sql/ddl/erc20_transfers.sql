@@ -14,4 +14,4 @@ amount_decimals int not null
 );
 
 create unique index ix_bl_lg_tx on eth_main.erc20_transfers
-(block_number, tx_hash, log_index);
+(tx_hash, log_index);
