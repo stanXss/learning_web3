@@ -26,7 +26,7 @@ Requirements
 - PostgreSQL 14+
 - Ethereum JSON-RPC endpoint
 
-- Python dependencies:
+Python dependencies:
 - web3
 - psycopg2
 - python-dotenv
