@@ -72,7 +72,6 @@ def proc_main():
         logs_out.append(make_row(log_out))
 
     print(logs_out)
-    return
 
     print(blk_times)
 
@@ -112,10 +111,9 @@ def bulk_insert_transfers(rows, page_size=5000):  # load txs into db
     """
 
     SQL_INSERT = """
-    INSERT INTO eth_main.erc20_transfers (
-      blockchain, token_address, tx_hash, log_index,
-      block_number, block_time, from_address, to_address,
-      amount_raw, amount_decimals
+    INSERT INTO eth_main.uni_trades (
+    pool_address, tx_hash, log_index, block_number,
+    block_time, sender, recipient, amount0_raw, amount1_raw, sqrtPriceX96, liquidity, tick
     ) VALUES %s
     ON CONFLICT (tx_hash, log_index) DO NOTHING;
     """
