@@ -31,8 +31,15 @@ UNISWAP_V3_SWAP_ABI = [
   }
 ]
 
+POOL_ABI = [
+  {"name":"token0","outputs":[{"type":"address"}],"inputs":[],"stateMutability":"view","type":"function"},
+  {"name":"token1","outputs":[{"type":"address"}],"inputs":[],"stateMutability":"view","type":"function"},
+  {"name":"fee","outputs":[{"type":"uint24"}],"inputs":[],"stateMutability":"view","type":"function"},
+]
+
 # POOL_ADDRESS = Web3.to_checksum_address('0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36')  # ETH/USDT v3 0.3% pool
-POOL_ADDRESS = Web3.to_checksum_address('0x8ad599c3a055b0d53d8045f47c405cc1d17674f9')  # ETH/USDC v3 0.3% pool
+#POOL_ADDRESS = Web3.to_checksum_address('0x8ad599c3a0ff1de082011efddc58f1908eb6e6d8')  # ETH/USDC v3 0.3% pool
+POOL_ADDRESS = Web3.to_checksum_address('0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640')  # ETH/USDC v3 0.05% pool
 SWAP_TOPIC = Web3.keccak(text="Swap(address,address,int256,int256,uint160,uint128,int24)").hex()
 w3 = Web3(Web3.HTTPProvider(RPC_URL))  # web3 RPC service
 conn = psycopg2.connect(CONN_LINE)  # init db connection
@@ -55,12 +62,35 @@ def proc_main():
     print(last_block)
     print(current_block)
 
+    """
+    print("chain_id:", w3.eth.chain_id)
+    print("code_len:", len(w3.eth.get_code(Web3.to_checksum_address(POOL_ADDRESS))))
+
+    pool = w3.eth.contract(address=POOL_ADDRESS, abi=POOL_ABI)
+    print(pool.functions.token0().call())
+    print(pool.functions.token1().call())
+    print(pool.functions.fee().call())
+    """
+
     logs = w3.eth.get_logs({
         "fromBlock": last_block,
         "toBlock":   current_block,
         "address":   POOL_ADDRESS,
         "topics":    [SWAP_TOPIC]
     })
+
+    """payload = {
+        "jsonrpc": "2.0", "id": 1, "method": "eth_getLogs",
+        "params": [{
+            "fromBlock": hex(last_block),
+            "toBlock": hex(current_block),
+            "address": POOL_ADDRESS,
+            "topics": [SWAP_TOPIC]
+        }]
+    }
+
+    r = requests.post(RPC_URL, json=payload, timeout=30)
+    print(r.status_code, r.text[:500])"""
 
     block_numbers = list(set([parse_block_number(log["blockNumber"]) for log in logs]))
     blk_times = get_block_timestamps_bulk(sorted(block_numbers))
@@ -111,7 +141,7 @@ def bulk_insert_transfers(rows, page_size=5000):  # load txs into db
     """
 
     SQL_INSERT = """
-    INSERT INTO eth_main.uni_trades (
+    INSERT INTO eth_main.uniswap_v3_swaps (
     pool_address, tx_hash, log_index, block_number,
     block_time, sender, recipient, amount0_raw, amount1_raw, sqrtPriceX96, liquidity, tick
     ) VALUES %s
