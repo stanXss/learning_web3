@@ -6,6 +6,7 @@ import requests
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timezone
+import time
 
 from shared_funcs import hex_to_bytes20, hex_to_bytes32, parse_block_number
 
@@ -56,8 +57,8 @@ def proc_main():
     if last_block is None:  # only take several blocks because of rpc limit
         last_block = current_block - 1000
     else:
-        if current_block - last_block > 9:
-            last_block = current_block - 9
+        if current_block - last_block > 100:
+            last_block = current_block - 100
 
     print(last_block)
     print(current_block)
@@ -72,31 +73,51 @@ def proc_main():
     print(pool.functions.fee().call())
     """
 
-    logs = w3.eth.get_logs({
-        "fromBlock": last_block,
-        "toBlock":   current_block,
-        "address":   POOL_ADDRESS,
-        "topics":    [SWAP_TOPIC]
-    })
+    all_logs = []
 
-    """payload = {
-        "jsonrpc": "2.0", "id": 1, "method": "eth_getLogs",
-        "params": [{
-            "fromBlock": hex(last_block),
-            "toBlock": hex(current_block),
-            "address": POOL_ADDRESS,
-            "topics": [SWAP_TOPIC]
-        }]
-    }
+    run_block = last_block
+
+    while current_block >= run_block:
+
+        try:
+            logs = w3.eth.get_logs({
+                "fromBlock": run_block,
+                "toBlock":   run_block + 9,
+                "address":   POOL_ADDRESS,
+                "topics":    [SWAP_TOPIC]
+            })
+
+            all_logs.extend(logs)
+
+            time.sleep(0.1)
+
+        except Exception as e:
+            if "429" in str(e):
+                time.sleep(2.0)  # hard backoff
+                continue
+            else:
+                raise
+
+        run_block = run_block + 9
+
+        """payload = {
+            "jsonrpc": "2.0", "id": 1, "method": "eth_getLogs",
+            "params": [{
+                "fromBlock": hex(last_block),
+                "toBlock": hex(current_block),
+                "address": POOL_ADDRESS,
+                "topics": [SWAP_TOPIC]
+            }]
+        }
 
     r = requests.post(RPC_URL, json=payload, timeout=30)
     print(r.status_code, r.text[:500])"""
 
-    block_numbers = list(set([parse_block_number(log["blockNumber"]) for log in logs]))
+    block_numbers = list(set([parse_block_number(log["blockNumber"]) for log in all_logs]))
     blk_times = get_block_timestamps_bulk(sorted(block_numbers))
 
     logs_out = []
-    for log in logs:
+    for log in all_logs:
         log_out = decode_swap_log(log, blk_times)
 
         logs_out.append(make_row(log_out))
