@@ -6,10 +6,8 @@ import requests
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timezone
-import time
 
-from shared_funcs import hex_to_bytes20, hex_to_bytes32, parse_block_number
-
+from shared_funcs import hex_to_bytes20, hex_to_bytes32, parse_block_number, throttle
 
 load_dotenv()
 RPC_URL = os.environ["RPC_URL"]
@@ -77,6 +75,8 @@ def proc_main():
 
     run_block = last_block
 
+    LAST_CALL = 0
+
     while current_block >= run_block:
 
         try:
@@ -89,26 +89,26 @@ def proc_main():
 
             all_logs.extend(logs)
 
-            time.sleep(0.1)
+            LAST_CALL = throttle(0.1, LAST_CALL)
 
         except Exception as e:
             if "429" in str(e):
-                time.sleep(2.0)  # hard backoff
+                LAST_CALL = throttle(2.0, LAST_CALL)  # hard backoff
                 continue
             else:
                 raise
 
         run_block = run_block + 9
 
-        """payload = {
-            "jsonrpc": "2.0", "id": 1, "method": "eth_getLogs",
-            "params": [{
-                "fromBlock": hex(last_block),
-                "toBlock": hex(current_block),
-                "address": POOL_ADDRESS,
-                "topics": [SWAP_TOPIC]
-            }]
-        }
+    """payload = {
+        "jsonrpc": "2.0", "id": 1, "method": "eth_getLogs",
+        "params": [{
+            "fromBlock": hex(last_block),
+            "toBlock": hex(current_block),
+            "address": POOL_ADDRESS,
+            "topics": [SWAP_TOPIC]
+        }]
+    }
 
     r = requests.post(RPC_URL, json=payload, timeout=30)
     print(r.status_code, r.text[:500])"""

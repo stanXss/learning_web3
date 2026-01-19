@@ -7,7 +7,7 @@ import os
 from dotenv import load_dotenv
 from datetime import datetime, timezone
 
-from shared_funcs import hex_to_bytes20, hex_to_bytes32, parse_block_number
+from shared_funcs import hex_to_bytes20, hex_to_bytes32, parse_block_number, throttle
 
 load_dotenv()
 RPC_URL = os.environ["RPC_URL"]
@@ -46,24 +46,46 @@ def proc_main():
     if last_block is None:  # only take several blocks because of rpc limit
         last_block = current_block - 1000
     else:
-        if current_block - last_block > 5:
-            last_block = current_block - 5
+        if current_block - last_block > 100:
+            last_block = current_block - 100
 
     print(last_block)
     print(current_block)
 
-    logs = w3.eth.get_logs({
-        "fromBlock": last_block,
-        "toBlock":   current_block,
-        "address":   TOKEN,
-        "topics":    [TRANSFER_TOPIC]
-    })
+    all_logs = []
 
-    block_numbers = list(set([parse_block_number(log["blockNumber"]) for log in logs]))
+    run_block = last_block
+
+    LAST_CALL = 0
+
+    while current_block >= run_block:
+
+        try:
+            logs = w3.eth.get_logs({
+                "fromBlock": run_block,
+                "toBlock": run_block + 9,
+                "address": TOKEN,
+                "topics": [TRANSFER_TOPIC]
+            })
+
+            all_logs.extend(logs)
+
+            LAST_CALL = throttle(0.1, LAST_CALL)
+
+        except Exception as e:
+            if "429" in str(e):
+                LAST_CALL = throttle(2.0, LAST_CALL)  # hard backoff
+                continue
+            else:
+                raise
+
+        run_block = run_block + 9
+
+    block_numbers = list(set([parse_block_number(log["blockNumber"]) for log in all_logs]))
     blk_times = get_block_timestamps_bulk(sorted(block_numbers))
 
     logs_out = []
-    for log in logs:
+    for log in all_logs:
         log_out = decode_transfer_log(log, blk_times)
         logs_out.append(make_row(log_out, decimals=DECIMALS))
 

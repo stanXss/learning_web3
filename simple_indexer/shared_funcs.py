@@ -1,3 +1,5 @@
+import time
+
 def hex_to_bytes20(addr: str) -> bytes:  # hex to bytes for addresses
     # expects '0x' + 40 hex
     a = addr.lower()
@@ -22,3 +24,12 @@ def parse_block_number(x):  # block number from hex to int if needed
     if isinstance(x, int):
         return x
     return int(x, 16)
+
+
+def throttle(MIN_INTERVAL, LAST_CALL):
+    now = time.time()
+    wait = MIN_INTERVAL - (now - LAST_CALL)
+    if wait > 0:
+        time.sleep(wait)
+    LAST_CALL = time.time()
+    return LAST_CALL
