@@ -53,7 +53,7 @@ def proc_main():
     current_block = w3.eth.block_number
 
     if last_block is None:  # only take several blocks because of rpc limit
-        last_block = current_block - 1000
+        last_block = current_block - 100
     else:
         if current_block - last_block > 100:
             last_block = current_block - 100
@@ -130,6 +130,8 @@ def proc_main():
 
     load_block_numbers(blk_times)
 
+    load_block_load(blk_times)
+
 
 def load_block_numbers(blk_times): # load block data into db
 
@@ -152,6 +154,26 @@ def load_block_numbers(blk_times): # load block data into db
 
     conn.commit()
 
+def load_block_load(blk_times): # load block data into db
+
+    with conn.cursor() as cur:
+
+        for key, value in blk_times.items():
+            cur.execute(
+                """
+                INSERT INTO eth_main.block_load (
+                    block_number, load_table
+                )
+                VALUES (%s,%s)
+                ON CONFLICT (block_number, load_table) DO NOTHING;
+                """,
+                (
+                    key,
+                    'uniswap_v3_swaps',
+                )
+            )
+
+    conn.commit()
 
 def bulk_insert_transfers(rows, page_size=5000):  # load txs into db
     cur = conn.cursor()
@@ -210,13 +232,17 @@ def get_max_loaded_block():  # get max block number already loaded into db
     SQL_GET_MAX_BLOCK = """
     select
     max(block_number) block
-    from eth_main.block_cache bc
+    from eth_main.block_load bc
+    where load_table = 'uniswap_v3_swaps'
     """
 
     with conn.cursor() as cur:
         cur.execute(SQL_GET_MAX_BLOCK)
-        last_block = int(cur.fetchone()[0])
-    return last_block
+        res = cur.fetchone()
+        if res is None:
+            return None
+        else:
+            return res[0]
 
 
 def make_row(decoded) -> tuple:  # prepare row for db insert
