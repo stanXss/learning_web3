@@ -1,6 +1,6 @@
 Web3 ERC-20 Indexer (Ethereum)
 
-A minimal, production-style ERC-20 Transfer indexer for Ethereum mainnet.
+A minimal, production-style ERC-20 Transfer and Uniswap pool swaps indexer for Ethereum mainnet.
 
 This project connects directly to an Ethereum JSON-RPC node, fetches on-chain Transfer events, decodes them using ABI, and stores normalized data in PostgreSQL for analytics and downstream use.
 
@@ -18,7 +18,7 @@ Data model highlights:
 - No assumptions about “one transfer per transaction”
 - Addresses and hashes stored as raw bytes (20 / 32 bytes)
 
-Run file: main.py
+Run file: transfers.py for transfers, uni.py for uniswap swaps in ETH/USDC pool
 Database entities: in folder sql/ddl/
 
 Requirements
