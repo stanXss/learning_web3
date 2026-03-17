@@ -34,7 +34,7 @@ D --> E[(PostgreSQL Database)]
 E --> F[Analytics Queries\nVolume, Top Traders, Transfers]
 
 F --> G[Dashboards / SQL Analysis]
-
+```
 
 ## Key Design Decisions
 
